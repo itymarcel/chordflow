@@ -9,6 +9,11 @@ module.exports = {
   },
   webpack: {
     configure: (config) => {
+      config.ignoreWarnings = [
+        ...(config.ignoreWarnings || []),
+        /Critical dependency: the request of a dependency is an expression/,
+        /Failed to parse source map/
+      ];
       config.resolve = config.resolve || {};
       config.resolve.fallback = {
         ...(config.resolve.fallback || {}),
