@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Info, X } from "lucide-react";
 import { PianoCard } from "./components/PianoCard";
 import { SuggestionCard } from "./components/SuggestionCard";
 import { useMidiInputs } from "./hooks";
@@ -87,6 +87,7 @@ function App() {
   const [progressionMode, setProgressionMode] = useState<ProgressionMode>("auto");
   const [engine, setEngine] = useState<"linear" | "dynamic">("dynamic");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("simple");
+  const [showInfo, setShowInfo] = useState(false);
   const [magentaState, setMagentaState] = useState<MagentaState>(() => getMagentaState());
   const [magentaWorking, setMagentaWorking] = useState(false);
   const [committedSuggestions, setCommittedSuggestions] = useState<ChordSuggestion[]>([]);
@@ -640,6 +641,14 @@ function App() {
                 <option value="advanced">advanced</option>
               </select>
             </label>
+
+            <button
+              onClick={() => setShowInfo(true)}
+              className="rounded-md p-2 text-muted transition-colors hover:text-ink"
+              aria-label="About ChordFlow"
+            >
+              <Info className="size-4" />
+            </button>
           </div>
         </div>
 
@@ -761,6 +770,73 @@ function App() {
           )}
         </div>
       </div>
+
+      {showInfo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowInfo(false)}
+        >
+          <div
+            className="relative mx-5 w-full max-w-md rounded-[24px] bg-panel px-8 py-8 text-ink shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowInfo(false)}
+              className="absolute right-5 top-5 rounded-md p-1 text-muted transition-colors hover:text-ink"
+              aria-label="Close"
+            >
+              <X className="size-4" />
+            </button>
+
+            <h2 className="font-body text-xl font-semibold text-ink">ChordFlow</h2>
+            <p className="mt-4 text-sm leading-relaxed text-muted">
+              Connect a MIDI keyboard. Play a chord. ChordFlow detects it and suggests what to play next.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-muted">
+              The <span className="text-ink">linear</span> engine uses hand-written jazz harmony rules — cadences, borrowed chords, voice leading. The <span className="text-ink">dynamic</span> engine uses{" "}
+              <a
+                href="https://magenta.tensorflow.org/js"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent underline underline-offset-2 hover:opacity-80"
+              >
+                Magenta.js
+              </a>
+              , a neural network from Google that runs entirely in the browser. It generates melodic continuations from your input and analyses the pitch content to propose chords.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-muted">
+              No backend. No account. Audio never leaves your device.
+            </p>
+
+            <div className="mt-6 flex items-center gap-4 border-t border-white/10 pt-5">
+              <a
+                href="https://github.com/itymarcel/chordflow"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-muted underline underline-offset-2 hover:text-ink"
+              >
+                GitHub
+              </a>
+              <a
+                href="https://magenta.tensorflow.org/js"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-muted underline underline-offset-2 hover:text-ink"
+              >
+                Magenta.js
+              </a>
+              <a
+                href="https://www.hypersuper.uk"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-auto text-sm text-muted underline underline-offset-2 hover:text-ink"
+              >
+                © hypersuper
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
