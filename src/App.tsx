@@ -128,10 +128,8 @@ function App() {
     return effectiveActiveNotes.filter((note) => !committedSet.has(note)).sort((a, b) => a - b);
   }, [committedVoicingAnchor, effectiveActiveNotes]);
   const observationNotes = useMemo(() => {
-    return Array.from(new Set([...committedVoicingAnchor, ...observationOverlayNotes, ...observationReleasedNotes])).sort(
-      (a, b) => a - b
-    );
-  }, [committedVoicingAnchor, observationOverlayNotes, observationReleasedNotes]);
+    return Array.from(new Set([...committedVoicingAnchor, ...observationOverlayNotes])).sort((a, b) => a - b);
+  }, [committedVoicingAnchor, observationOverlayNotes]);
   const observationNoteOpacities = useMemo(() => {
     const opacities: Record<number, number> = {};
 
