@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { PianoCard } from "./components/PianoCard";
 import { SuggestionCard } from "./components/SuggestionCard";
 import { useMidiInputs } from "./hooks";
@@ -201,6 +202,9 @@ function App() {
   }, [previousSnapshots]);
   const simpleSuggestions = useMemo(() => verticalSuggestions.slice(0, 3), [verticalSuggestions]);
   const advancedSuggestions = useMemo(() => verticalSuggestions.slice(0, 3), [verticalSuggestions]);
+  const menuControlClassName = "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-ink";
+  const menuSelectClassName = "bg-transparent px-0 py-0 pr-6 text-sm text-ink outline-none";
+  const menuLabelClassName = "opacity-50";
 
   useEffect(() => {
     committedChordHistoryRef.current = committedChordHistory;
@@ -316,11 +320,11 @@ function App() {
         const nextSuggestions = engineRef.current === "dynamic"
           ? []
           : getChordSuggestions(pendingChord, moodRef.current, {
-              recentChords: committedChordHistoryRef.current,
-              progressionMode: progressionModeRef.current
-            })
-              .filter((suggestion, index, all) => all.findIndex((entry) => entry.id === suggestion.id) === index)
-              .slice(0, 4);
+            recentChords: committedChordHistoryRef.current,
+            progressionMode: progressionModeRef.current
+          })
+            .filter((suggestion, index, all) => all.findIndex((entry) => entry.id === suggestion.id) === index)
+            .slice(0, 4);
 
         setCommittedChord(pendingChord);
         setCommittedSuggestions(nextSuggestions);
@@ -492,37 +496,40 @@ function App() {
       </div>
       <div className="relative z-10 flex min-h-[calc(100vh-2.5rem)] w-full flex-col">
         <div className="flex w-full items-center gap-3">
-          <select
-            className="rounded-md bg-panel px-3 py-2 text-sm text-ink outline-none"
-            value={selectedId}
-            onChange={(event) => setSelectedId(event.target.value)}
-            disabled={!devices.length}
-          >
-            {devices.length ? (
-              devices.map((device) => (
-                <option key={device.id} value={device.id}>
-                  {device.name} · {device.manufacturer}
-                </option>
-              ))
-            ) : (
-              <option value="">{midiSupported ? "Connect a MIDI device" : "Web MIDI not available"}</option>
-            )}
-          </select>
+          <div className="relative">
+            <select
+              className="appearance-none rounded-md bg-panel px-3 py-2 pr-10 text-sm text-ink outline-none"
+              value={selectedId}
+              onChange={(event) => setSelectedId(event.target.value)}
+              disabled={!devices.length}
+            >
+              {devices.length ? (
+                devices.map((device) => (
+                  <option key={device.id} value={device.id}>
+                    {device.name} · {device.manufacturer}
+                  </option>
+                ))
+              ) : (
+                <option value="">{midiSupported ? "Connect a MIDI device" : "Web MIDI not available"}</option>
+              )}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-ink/70" />
+          </div>
 
-          <div className="flex items-center gap-1.5 font-mono text-sm text-muted">
-            <span>[space]</span>
+          <div className="flex items-center gap-1.5 font-mono text-xs text-muted">
             <span>{isPaused ? "▶" : "⏸"}</span>
+            <span>[space]</span>
           </div>
 
           <div className="ml-auto flex items-center gap-3">
             {engine === "linear" && (
               <>
-                <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
-                  <span>progression</span>
+                <label className={menuControlClassName}>
+                  <span className={menuLabelClassName}>progression</span>
                   <select
                     value={progressionMode}
                     onChange={(event) => setProgressionMode(event.target.value as ProgressionMode)}
-                    className="bg-transparent text-sm text-ink outline-none"
+                    className={menuSelectClassName}
                   >
                     <option value="auto">auto</option>
                     <option value="major_ii_v_i">ii-V-I major</option>
@@ -533,12 +540,12 @@ function App() {
                   </select>
                 </label>
 
-                <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
-                  <span>mood</span>
+                <label className={menuControlClassName}>
+                  <span className={menuLabelClassName}>mood</span>
                   <select
                     value={mood}
                     onChange={(event) => setMood(event.target.value as SuggestionMood)}
-                    className="bg-transparent text-sm text-ink outline-none"
+                    className={menuSelectClassName}
                   >
                     <option value="jazz">jazz</option>
                     <option value="pop">pop</option>
@@ -549,7 +556,7 @@ function App() {
               </>
             )}
 
-            <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
+            <label className={menuControlClassName}>
               <input
                 type="checkbox"
                 checked={closeVoicings}
@@ -559,8 +566,8 @@ function App() {
               close voicings
             </label>
 
-            <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
-              <span>engine</span>
+            <label className={menuControlClassName}>
+              <span className={menuLabelClassName}>engine</span>
               <select
                 value={engine}
                 onChange={(event) => {
@@ -568,7 +575,7 @@ function App() {
                   setEngine(next);
                   if (next === "dynamic") initMagenta();
                 }}
-                className="bg-transparent text-sm text-ink outline-none"
+                className={menuSelectClassName}
               >
                 <option value="linear">linear</option>
                 <option value="dynamic">dynamic</option>
@@ -581,12 +588,12 @@ function App() {
               )}
             </label>
 
-            <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
-              <span>layout</span>
+            <label className={menuControlClassName}>
+              <span className={menuLabelClassName}>layout</span>
               <select
                 value={layoutMode}
                 onChange={(event) => setLayoutMode(event.target.value as LayoutMode)}
-                className="bg-transparent text-sm text-ink outline-none"
+                className={menuSelectClassName}
               >
                 <option value="simple">simple</option>
                 <option value="advanced">advanced</option>
@@ -595,14 +602,14 @@ function App() {
           </div>
         </div>
 
-        <div className={`flex flex-1 justify-center ${layoutMode === "simple" ? "items-center py-8" : "items-start pt-8"}`}>
+        <div className={`flex flex-1 justify-center ${layoutMode === "simple" ? "items-center" : "items-start"}`}>
           {layoutMode === "simple" ? (
             <div className="grid w-full max-w-[1600px] grid-cols-1 items-center gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)_minmax(0,0.95fr)]">
-              <div className="flex min-w-0 flex-col justify-center py-10">
+              <div className="flex min-w-0 flex-col justify-center py-4">
                 <PianoCard
                   opacity={previousSnapshot ? 0.42 : 0.12}
-                  topLabel={previousSnapshot?.degreeLabel ?? " "}
-                  topLabelVisible={!!previousSnapshot?.degreeLabel}
+                  topLabel={engine === "linear" ? (previousSnapshot?.degreeLabel ?? " ") : "previous"}
+                  topLabelVisible={engine === "linear" ? !!previousSnapshot?.degreeLabel : !!previousSnapshot}
                   noteSet={previousSnapshot?.notes ?? []}
                   dimInactive={false}
                   title={previousSnapshot?.chordText ?? "placeholder"}
@@ -610,11 +617,11 @@ function App() {
                 />
               </div>
 
-              <div className="flex min-w-0 flex-col justify-center py-10">
+              <div className="flex min-w-0 flex-col justify-center py-4">
                 <PianoCard
                   opacity={1}
-                  topLabel={displayedChordDegreeLabel || " "}
-                  topLabelVisible={!!displayedChordDegreeLabel}
+                  topLabel={engine === "linear" ? (displayedChordDegreeLabel || " ") : "current"}
+                  topLabelVisible={engine === "linear" ? !!displayedChordDegreeLabel : !!displayedChordText}
                   activeNotes={effectiveActiveNotes}
                   activeOpacity={1}
                   faded={false}
@@ -626,7 +633,7 @@ function App() {
                 />
               </div>
 
-              <div className="flex min-w-0 flex-col gap-2 py-10">
+              <div className="flex min-w-0 flex-col gap-2 py-4">
                 {Array.from({ length: 3 }, (_, index) => simpleSuggestions[index] ?? null).map((suggestion, index) => (
                   <SuggestionCard
                     key={suggestion?.id ?? `simple-${index}`}
@@ -644,13 +651,13 @@ function App() {
                 {alignedPreviousSnapshots.map((snapshot, index) => (
                   <div
                     key={`history-slot-${index}`}
-                    className="flex min-w-0 flex-col gap-4 py-10"
+                    className="flex min-w-0 flex-col gap-4 py-4"
                   >
                     <PianoCard
                       opacity={snapshot ? [0.25, 0.5, 0.75][index] : 0.12}
                       animateOpacity={false}
-                      topLabel={snapshot?.degreeLabel ?? " "}
-                      topLabelVisible={!!snapshot?.degreeLabel}
+                      topLabel=" "
+                      topLabelVisible={false}
                       noteSet={snapshot?.notes ?? []}
                       dimInactive
                       title={snapshot?.chordText ?? "placeholder"}
@@ -675,12 +682,12 @@ function App() {
                 ))}
               </section>
 
-              <div className="flex min-w-0 flex-col gap-4 py-10">
+              <div className="flex min-w-0 flex-col gap-4 py-4">
                 <div className="flex flex-col gap-4">
                   <PianoCard
                     opacity={1}
-                    topLabel={displayedChordDegreeLabel || " "}
-                    topLabelVisible={!!displayedChordDegreeLabel}
+                    topLabel=" "
+                    topLabelVisible={false}
                     activeNotes={displayedNotes}
                     activeOpacity={effectiveActiveNotes.length ? 1 : fadeOpacity}
                     faded={false}
