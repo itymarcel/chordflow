@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PianoKeyboard } from "./components/PianoKeyboard";
 import { SuggestionCard } from "./components/SuggestionCard";
 import { useMidiInputs } from "./hooks";
+import { getMagentaState, getMagentaSuggestions, initMagenta, MagentaState, subscribeMagentaState } from "./magenta";
 import { analyzeChordNotes, ChordSuggestion, detectChord, DetectedChord, getChordSuggestions, ProgressionMode, SuggestionMood } from "./music";
 
 const CHORD_FADE_DURATION_MS = 5000;
@@ -77,9 +78,12 @@ function App() {
   const { activeNotes, devices, midiSupported, selectedId, setSelectedId } = useMidiInputs();
   const [isPaused, setIsPaused] = useState(false);
   const [pausedNotes, setPausedNotes] = useState<number[]>([]);
-  const [closeVoicings, setCloseVoicings] = useState(false);
+  const [closeVoicings, setCloseVoicings] = useState(true);
   const [mood, setMood] = useState<SuggestionMood>("jazz");
   const [progressionMode, setProgressionMode] = useState<ProgressionMode>("auto");
+  const [engine, setEngine] = useState<"linear" | "dynamic">("dynamic");
+  const [magentaState, setMagentaState] = useState<MagentaState>(() => getMagentaState());
+  const [magentaWorking, setMagentaWorking] = useState(false);
   const [releasedAt, setReleasedAt] = useState<number | null>(null);
   const [fadeOpacity, setFadeOpacity] = useState(1);
   const [committedSuggestions, setCommittedSuggestions] = useState<ChordSuggestion[]>([]);
@@ -99,6 +103,7 @@ function App() {
   const committedChordHistoryRef = useRef<DetectedChord[]>([]);
   const moodRef = useRef<SuggestionMood>(mood);
   const progressionModeRef = useRef<ProgressionMode>(progressionMode);
+  const engineRef = useRef<"linear" | "dynamic">(engine);
   const effectiveActiveNotes = isPaused ? pausedNotes : activeNotes;
 
   const displayedCommittedSuggestions = useMemo(() => {
@@ -202,6 +207,15 @@ function App() {
   }, [progressionMode]);
 
   useEffect(() => {
+    engineRef.current = engine;
+  }, [engine]);
+
+  useEffect(() => {
+    initMagenta(); // dynamic is the default engine, so start loading immediately
+    return subscribeMagentaState(setMagentaState);
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (commitTimerRef.current !== null) {
         window.clearTimeout(commitTimerRef.current);
@@ -290,12 +304,14 @@ function App() {
         }
 
         const pendingChordText = [pendingChord.name, ...pendingChord.aliases].join(" or ");
-        const nextSuggestions = getChordSuggestions(pendingChord, moodRef.current, {
-          recentChords: committedChordHistoryRef.current,
-          progressionMode: progressionModeRef.current
-        })
-          .filter((suggestion, index, all) => all.findIndex((entry) => entry.id === suggestion.id) === index)
-          .slice(0, 4);
+        const nextSuggestions = engineRef.current === "dynamic"
+          ? []
+          : getChordSuggestions(pendingChord, moodRef.current, {
+              recentChords: committedChordHistoryRef.current,
+              progressionMode: progressionModeRef.current
+            })
+              .filter((suggestion, index, all) => all.findIndex((entry) => entry.id === suggestion.id) === index)
+              .slice(0, 4);
 
         setCommittedChord(pendingChord);
         setCommittedSuggestions(nextSuggestions);
@@ -364,6 +380,7 @@ function App() {
   }, [activeNotes]);
 
   useEffect(() => {
+    if (engine === "dynamic") return; // Magenta effect handles suggestions in dynamic mode
     if (!committedChord) {
       setCommittedSuggestions([]);
       return;
@@ -375,7 +392,39 @@ function App() {
         progressionMode
       })
     );
-  }, [committedChord, mood, progressionMode, recommitSuggestionHistory]);
+  }, [committedChord, mood, progressionMode, recommitSuggestionHistory, engine]);
+
+  useEffect(() => {
+    if (engine !== "dynamic" || magentaState !== "ready" || !committedChord) return;
+
+    let cancelled = false;
+    setMagentaWorking(true);
+
+    getMagentaSuggestions(committedChord, committedVoicingAnchor)
+      .then((results) => {
+        if (cancelled) return;
+        if (results.length === 0) return;
+        setCommittedSuggestions(results);
+        // Keep the snapshot in sync so history shows the AI suggestions, not the
+        // rule-based ones written at commit time.
+        setChordSnapshots((current) => {
+          if (!current.length) return current;
+          const [latest, ...rest] = current;
+          return [{ ...latest, suggestions: results }, ...rest];
+        });
+      })
+      .catch(() => {
+        // silent — keep existing suggestions as fallback
+      })
+      .finally(() => {
+        if (!cancelled) setMagentaWorking(false);
+      });
+
+    return () => {
+      cancelled = true;
+      setMagentaWorking(false);
+    };
+  }, [committedChord, committedVoicingAnchor, engine, magentaState]);
 
   useEffect(() => {
     if (releasedAt === null) {
@@ -432,13 +481,9 @@ function App() {
         ) : null}
       </div>
       <div className="relative z-10 flex min-h-[calc(100vh-2.5rem)] w-full flex-col">
-        <div className="absolute right-0 top-0 flex items-center gap-2 px-1 py-1 text-sm text-muted">
-          <span className="text-base text-ink">{isPaused ? "▶" : "⏸"}</span>
-          <span>{isPaused ? "play" : "pause"} (space bar)</span>
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-3">
+        <div className="flex w-full items-center gap-3">
           <select
-            className="min-w-[260px] bg-panel px-3 py-2 text-sm text-ink outline-none"
+            className="rounded-md bg-panel px-3 py-2 text-sm text-ink outline-none"
             value={selectedId}
             onChange={(event) => setSelectedId(event.target.value)}
             disabled={!devices.length}
@@ -454,45 +499,78 @@ function App() {
             )}
           </select>
 
-          <label className="flex items-center gap-2 bg-panel px-3 py-2 text-sm text-ink">
-            <input
-              type="checkbox"
-              checked={closeVoicings}
-              onChange={(event) => setCloseVoicings(event.target.checked)}
-              className="h-4 w-4 accent-[#39ff14]"
-            />
-            close voicings
-          </label>
+          <div className="flex items-center gap-1.5 font-mono text-sm text-muted">
+            <span>[space]</span>
+            <span>{isPaused ? "▶" : "⏸"}</span>
+          </div>
 
-          <label className="flex items-center gap-2 bg-panel px-3 py-2 text-sm text-ink">
-            <span>mood</span>
-            <select
-              value={mood}
-              onChange={(event) => setMood(event.target.value as SuggestionMood)}
-              className="bg-transparent text-sm text-ink outline-none"
-            >
-              <option value="jazz">jazz</option>
-              <option value="pop">pop</option>
-              <option value="blues">blues</option>
-              <option value="gospel">gospel</option>
-            </select>
-          </label>
+          <div className="ml-auto flex items-center gap-3">
+            <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={closeVoicings}
+                onChange={(event) => setCloseVoicings(event.target.checked)}
+                className="h-4 w-4 accent-[#39ff14]"
+              />
+              close voicings
+            </label>
 
-          <label className="flex items-center gap-2 bg-panel px-3 py-2 text-sm text-ink">
-            <span>progression</span>
-            <select
-              value={progressionMode}
-              onChange={(event) => setProgressionMode(event.target.value as ProgressionMode)}
-              className="bg-transparent text-sm text-ink outline-none"
-            >
-              <option value="auto">auto</option>
-              <option value="major_ii_v_i">ii-V-I major</option>
-              <option value="minor_ii_v_i">iiø-V-i minor</option>
-              <option value="turnaround">turnaround</option>
-              <option value="backdoor">backdoor</option>
-              <option value="backcycling">backcycling</option>
-            </select>
-          </label>
+            <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
+              <span>engine</span>
+              <select
+                value={engine}
+                onChange={(event) => {
+                  const next = event.target.value as "linear" | "dynamic";
+                  setEngine(next);
+                  if (next === "dynamic") initMagenta();
+                }}
+                className="bg-transparent text-sm text-ink outline-none"
+              >
+                <option value="linear">linear</option>
+                <option value="dynamic">dynamic</option>
+              </select>
+              {engine === "dynamic" && magentaState === "loading" && (
+                <span className="animate-pulse text-xs text-warning">loading…</span>
+              )}
+              {engine === "dynamic" && magentaState === "error" && (
+                <span className="text-xs text-muted/60">unavailable</span>
+              )}
+            </label>
+
+            {engine === "linear" && (
+              <>
+                <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
+                  <span>mood</span>
+                  <select
+                    value={mood}
+                    onChange={(event) => setMood(event.target.value as SuggestionMood)}
+                    className="bg-transparent text-sm text-ink outline-none"
+                  >
+                    <option value="jazz">jazz</option>
+                    <option value="pop">pop</option>
+                    <option value="blues">blues</option>
+                    <option value="gospel">gospel</option>
+                  </select>
+                </label>
+
+                <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
+                  <span>progression</span>
+                  <select
+                    value={progressionMode}
+                    onChange={(event) => setProgressionMode(event.target.value as ProgressionMode)}
+                    className="bg-transparent text-sm text-ink outline-none"
+                  >
+                    <option value="auto">auto</option>
+                    <option value="major_ii_v_i">ii-V-I major</option>
+                    <option value="minor_ii_v_i">iiø-V-i minor</option>
+                    <option value="turnaround">turnaround</option>
+                    <option value="backdoor">backdoor</option>
+                    <option value="backcycling">backcycling</option>
+                  </select>
+                </label>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-1 items-start justify-center pt-8">
@@ -517,6 +595,7 @@ function App() {
                           miniature
                           compactPadding
                           noteSet={snapshot?.notes ?? []}
+                          dimInactive
                           className="w-full"
                         />
                       </div>
@@ -535,6 +614,7 @@ function App() {
                           opacity={snapshot ? [0.25, 0.5, 0.75][index] : 0.12}
                           hideReason
                           animateOpacity={false}
+                          dimInactive
                         />
                       )
                     )}
@@ -564,10 +644,7 @@ function App() {
                         className="w-full"
                       />
                     </div>
-                    <p
-                      className="flex min-h-[42px] items-start justify-center pt-2 text-center font-body text-lg text-ink transition-opacity duration-100 sm:text-xl"
-                      style={{ opacity: effectiveActiveNotes.length ? 1 : fadeOpacity }}
-                    >
+                    <p className="flex min-h-[42px] items-start justify-center pt-2 text-center font-body text-lg text-ink sm:text-xl">
                       {displayedChordText}
                     </p>
                   </div>
@@ -575,7 +652,12 @@ function App() {
 
                 <div className="flex flex-col gap-2">
                   {verticalSuggestions.map((suggestion, index) => (
-                    <SuggestionCard key={suggestion?.id ?? `vertical-${index}`} suggestion={suggestion} opacity={1} />
+                    <SuggestionCard
+                      key={suggestion?.id ?? `vertical-${index}`}
+                      suggestion={suggestion}
+                      opacity={1}
+                      isLoading={engine === "dynamic" && magentaWorking}
+                    />
                   ))}
                 </div>
               </div>

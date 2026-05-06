@@ -13,6 +13,7 @@ interface PianoKeyboardProps {
   noteOpacities?: Record<number, number>;
   noteRoles?: Record<number, NoteRole>;
   noteHands?: Record<number, "left" | "right">;
+  dimInactive?: boolean;
 }
 
 interface KeyDescriptor {
@@ -173,7 +174,8 @@ export function PianoKeyboard({
   viewportNotes,
   noteOpacities = {},
   noteRoles = {},
-  noteHands = {}
+  noteHands = {},
+  dimInactive = false
 }: PianoKeyboardProps) {
   const focusNotes = viewportNotes ?? (activeNotes.length ? activeNotes : noteSet ?? []);
   const range = resolveRange(miniature, focusNotes, centerViewport);
@@ -215,7 +217,7 @@ export function PianoKeyboard({
                 top: 0,
                 transform: "translateX(-50%)",
                 color: "#ffffff",
-                opacity: active ? highlightOpacity : 1,
+                opacity: 1,
                 zIndex: 3
               }}
             >
@@ -243,7 +245,7 @@ export function PianoKeyboard({
                 top: 0,
                 transform: "translateX(-50%)",
                 color: "#ffffff",
-                opacity: active ? highlightOpacity : 1,
+                opacity: 1,
                 zIndex: 4
               }}
             >
@@ -275,6 +277,7 @@ export function PianoKeyboard({
                   width: whiteWidth,
                   height: whiteHeight,
                   background: color,
+                  opacity: dimInactive && !active && !suggested ? 0.4 : 1,
                   zIndex: 1
                 }}
                 title={noteName(key.pitchClass)}

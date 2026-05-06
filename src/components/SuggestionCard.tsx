@@ -1,3 +1,4 @@
+import { Loader } from "lucide-react";
 import { ChordSuggestion, splitHands } from "../music";
 import { PianoKeyboard } from "./PianoKeyboard";
 
@@ -6,14 +7,34 @@ interface SuggestionCardProps {
   opacity: number;
   hideReason?: boolean;
   animateOpacity?: boolean;
+  isLoading?: boolean;
+  dimInactive?: boolean;
 }
 
 export function SuggestionCard({
   suggestion,
   opacity,
   hideReason = false,
-  animateOpacity = true
+  animateOpacity = true,
+  isLoading = false,
+  dimInactive = false
 }: SuggestionCardProps) {
+  if (!suggestion && isLoading) {
+    return (
+      <div
+        className={`min-h-[248px] rounded-[30px] px-5 py-4 ${animateOpacity ? "transition-opacity duration-300" : ""}`}
+        style={{ opacity }}
+      >
+        <PianoKeyboard activeNotes={[]} miniature compactPadding noteSet={[]} noteHands={{}} />
+        <p className="mt-2 text-center text-[1.15rem] text-ink">
+          <Loader className="inline-block size-4 animate-spin align-middle text-muted" />
+        </p>
+        <p className="mt-1 min-h-[1.5rem]" />
+        <p className="mt-1 min-h-[1.5rem]" />
+      </div>
+    );
+  }
+
   if (!suggestion) {
     return <div className="min-h-[248px] rounded-[30px] px-5 py-4 opacity-20" style={{ opacity }} />;
   }
@@ -35,6 +56,7 @@ export function SuggestionCard({
         compactPadding
         noteSet={suggestion.notes}
         noteHands={noteHands}
+        dimInactive={dimInactive}
       />
       <p className="mt-2 text-center text-[1.15rem] text-ink">{suggestion.label}</p>
       <p className="mt-1 text-center text-[13px] font-semibold uppercase tracking-[0.22em] text-ink/80">
