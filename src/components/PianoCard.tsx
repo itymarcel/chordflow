@@ -8,13 +8,9 @@ interface PianoCardProps {
   topLabel?: ReactNode;
   topLabelVisible?: boolean;
   activeNotes?: number[];
-  glowNotes?: number[];
-  glowOpacities?: Record<number, number>;
   noteSet?: number[];
   noteRoles?: Record<number, NoteRole>;
   noteHands?: Record<number, "left" | "right">;
-  noteOpacities?: Record<number, number>;
-  activeOpacity?: number;
   centerViewport?: boolean;
   viewportNotes?: number[];
   dimInactive?: boolean;
@@ -32,13 +28,9 @@ export function PianoCard({
   topLabel = "placeholder",
   topLabelVisible = false,
   activeNotes = [],
-  glowNotes = [],
-  glowOpacities = {},
   noteSet = [],
   noteRoles = {},
   noteHands = {},
-  noteOpacities = {},
-  activeOpacity = 1,
   centerViewport = false,
   viewportNotes,
   dimInactive = false,
@@ -61,15 +53,11 @@ export function PianoCard({
         <div className="relative flex min-h-[96px] items-center">
           <PianoKeyboard
             activeNotes={activeNotes}
-            glowNotes={glowNotes}
-            glowOpacities={glowOpacities}
             miniature
             compactPadding
             noteSet={noteSet}
             noteRoles={noteRoles}
             noteHands={noteHands}
-            noteOpacities={noteOpacities}
-            activeOpacity={activeOpacity}
             centerViewport={centerViewport}
             viewportNotes={viewportNotes}
             dimInactive={dimInactive}

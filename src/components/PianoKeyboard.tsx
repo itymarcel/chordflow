@@ -2,17 +2,13 @@ import { NoteRole, noteName } from "../music";
 
 interface PianoKeyboardProps {
   activeNotes: number[];
-  glowNotes?: number[];
-  glowOpacities?: Record<number, number>;
   className?: string;
   faded?: boolean;
   miniature?: boolean;
   compactPadding?: boolean;
   noteSet?: number[];
-  activeOpacity?: number;
   centerViewport?: boolean;
   viewportNotes?: number[];
-  noteOpacities?: Record<number, number>;
   noteRoles?: Record<number, NoteRole>;
   noteHands?: Record<number, "left" | "right">;
   dimInactive?: boolean;
@@ -142,17 +138,13 @@ function handColor(isBlack: boolean, hand: "left" | "right" | undefined, active:
 
 export function PianoKeyboard({
   activeNotes,
-  glowNotes = [],
-  glowOpacities = {},
   className = "",
   faded = false,
   miniature = false,
   compactPadding = false,
   noteSet,
-  activeOpacity = 1,
   centerViewport = false,
   viewportNotes,
-  noteOpacities = {},
   noteRoles = {},
   noteHands = {},
   dimInactive = false
@@ -166,7 +158,6 @@ export function PianoKeyboard({
   const keyGap = 2;
   const { whiteKeys, blackKeys, width } = buildKeys(range.start, range.end, whiteWidth, blackWidth, keyGap);
   const activeNoteSet = new Set(activeNotes);
-  const glowNoteSet = new Set(glowNotes);
   const suggestedNoteSet = new Set(noteSet ?? []);
   const whiteBase = "#d6e1e8";
   const blackBase = "#243543";
@@ -182,13 +173,12 @@ export function PianoKeyboard({
         {whiteKeys.map((key) => {
           const active = activeNoteSet.has(key.midi);
           const suggested = suggestedNoteSet.has(key.midi);
-          const fading = !active && !suggested && glowNoteSet.has(key.midi);
-          if (!active && !suggested && !fading) return null;
+          if (!active && !suggested) return null;
 
           return (
             <span
               key={`white-label-${key.midi}`}
-              className={`absolute font-body font-bold ${labelClassName} ${active || suggested ? "opacity-100" : "opacity-0 transition-opacity duration-300 ease-out"}`}
+              className={`absolute font-body font-bold ${labelClassName} opacity-100`}
               style={{
                 left: key.x + whiteWidth / 2,
                 top: 0,
@@ -205,13 +195,12 @@ export function PianoKeyboard({
         {blackKeys.map((key) => {
           const active = activeNoteSet.has(key.midi);
           const suggested = suggestedNoteSet.has(key.midi);
-          const fading = !active && !suggested && glowNoteSet.has(key.midi);
-          if (!active && !suggested && !fading) return null;
+          if (!active && !suggested) return null;
 
           return (
             <span
               key={`black-label-${key.midi}`}
-              className={`absolute font-body font-bold ${labelClassName} ${active || suggested ? "opacity-100" : "opacity-0 transition-opacity duration-300 ease-out"}`}
+              className={`absolute font-body font-bold ${labelClassName} opacity-100`}
               style={{
                 left: key.x + blackWidth / 2,
                 top: 0,
@@ -228,8 +217,6 @@ export function PianoKeyboard({
         <div className="absolute left-0 top-0" style={{ width, height: whiteHeight, transform: `translateY(${labelLaneHeight}px)` }}>
           {whiteKeys.map((key) => {
             const active = activeNoteSet.has(key.midi);
-            const glowing = glowNoteSet.has(key.midi);
-            const glowOpacity = glowOpacities[key.midi] ?? (glowing ? 1 : 0);
             const suggested = suggestedNoteSet.has(key.midi);
             const role = noteRoles[key.midi];
             const hand = noteHands[key.midi];
@@ -244,9 +231,6 @@ export function PianoKeyboard({
                   width: whiteWidth,
                   height: whiteHeight,
                   backgroundColor: baseColor,
-                  boxShadow: glowing
-                    ? `0 0 ${42 * glowOpacity}px rgba(57,255,20,${0.45 * glowOpacity}), 0 0 ${24 * glowOpacity}px #39ff14, 0 0 ${10 * glowOpacity}px #39ff14, inset 0 0 ${14 * glowOpacity}px #39ff14`
-                    : undefined,
                   opacity: dimInactive && !active && !suggested ? 0.4 : 1,
                   zIndex: 1
                 }}
@@ -262,8 +246,6 @@ export function PianoKeyboard({
 
           {blackKeys.map((key) => {
             const active = activeNoteSet.has(key.midi);
-            const glowing = glowNoteSet.has(key.midi);
-            const glowOpacity = glowOpacities[key.midi] ?? (glowing ? 1 : 0);
             const suggested = suggestedNoteSet.has(key.midi);
             const role = noteRoles[key.midi];
             const hand = noteHands[key.midi];
@@ -278,9 +260,6 @@ export function PianoKeyboard({
                   width: blackWidth,
                   height: blackHeight,
                   backgroundColor: baseColor,
-                  boxShadow: glowing
-                    ? `0 0 ${30 * glowOpacity}px rgba(57,255,20,${0.38 * glowOpacity}), 0 0 ${16 * glowOpacity}px #39ff14, 0 0 ${8 * glowOpacity}px #39ff14, inset 0 0 ${10 * glowOpacity}px #39ff14`
-                    : undefined,
                   zIndex: 2
                 }}
                 title={noteName(key.pitchClass)}
