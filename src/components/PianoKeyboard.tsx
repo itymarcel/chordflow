@@ -137,31 +137,22 @@ function blendColor(baseHex: string, targetHex: string, amount: number): string 
 }
 
 function roleColor(isBlack: boolean, role: NoteRole | undefined, active: boolean): string {
-  if (role === "tension") {
-    return active ? "#7dff63" : "#71d8ff";
-  }
+  if (active) return "#39ff14";
 
-  if (role === "outside") {
-    return active ? "#d6ff72" : "#c5ae71";
-  }
+  if (role === "tension") return "#71d8ff";
+  if (role === "outside") return "#c5ae71";
+  if (role === "bass") return "#52ff4a";
 
-  if (role === "bass") {
-    return active ? "#39ff14" : "#52ff4a";
-  }
-
-  return active ? "#39ff14" : isBlack ? "#7dff63" : "#7dff63";
+  return "#7dff63";
 }
 
 function handColor(isBlack: boolean, hand: "left" | "right" | undefined, active: boolean): string {
-  if (hand === "left") {
-    return active ? "#39ff14" : "#58f76a";
-  }
+  if (active) return "#39ff14";
 
-  if (hand === "right") {
-    return active ? "#52d6ff" : "#73dfff";
-  }
+  if (hand === "left") return "#58f76a";
+  if (hand === "right") return "#73dfff";
 
-  return active ? "#39ff14" : isBlack ? "#7dff63" : "#7dff63";
+  return "#7dff63";
 }
 
 export function PianoKeyboard({

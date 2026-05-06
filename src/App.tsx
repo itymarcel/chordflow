@@ -85,7 +85,7 @@ function App() {
   const [closeVoicings, setCloseVoicings] = useState(true);
   const [mood, setMood] = useState<SuggestionMood>("jazz");
   const [progressionMode, setProgressionMode] = useState<ProgressionMode>("auto");
-  const [engine, setEngine] = useState<"linear" | "dynamic">("dynamic");
+  const [engine, setEngine] = useState<"linear" | "neural">("neural");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("simple");
   const [showInfo, setShowInfo] = useState(false);
   const [magentaState, setMagentaState] = useState<MagentaState>(() => getMagentaState());
@@ -109,7 +109,7 @@ function App() {
   const committedVoicingAnchorRef = useRef<number[]>([]);
   const moodRef = useRef<SuggestionMood>(mood);
   const progressionModeRef = useRef<ProgressionMode>(progressionMode);
-  const engineRef = useRef<"linear" | "dynamic">(engine);
+  const engineRef = useRef<"linear" | "neural">(engine);
   const effectiveActiveNotes = isPaused ? pausedNotes : activeNotes;
 
   const displayedCommittedSuggestions = useMemo(() => {
@@ -268,7 +268,7 @@ function App() {
   }, [engine]);
 
   useEffect(() => {
-    initMagenta(); // dynamic is the default engine, so start loading immediately
+    initMagenta(); // neural is the default engine, so start loading immediately
     return subscribeMagentaState(setMagentaState);
   }, []);
 
@@ -301,7 +301,7 @@ function App() {
 
     const pendingChordText = [pendingChord.name, ...pendingChord.aliases].join(" or ");
     const pendingChordDegreeLabel = getDetectedChordDegreeLabel(pendingChord);
-    const nextSuggestions = engineRef.current === "dynamic"
+    const nextSuggestions = engineRef.current === "neural"
       ? []
       : getChordSuggestions(pendingChord, moodRef.current, {
         recentChords: committedChordHistoryRef.current,
@@ -452,7 +452,7 @@ function App() {
   }, [activeNotes]);
 
   useEffect(() => {
-    if (engine === "dynamic") return; // Magenta effect handles suggestions in dynamic mode
+    if (engine === "neural") return; // Magenta effect handles suggestions in dynamic mode
     if (!committedChord) {
       setCommittedSuggestions([]);
       return;
@@ -467,7 +467,7 @@ function App() {
   }, [committedChord, mood, progressionMode, recommitSuggestionHistory, engine]);
 
   useEffect(() => {
-    if (engine !== "dynamic" || magentaState !== "ready" || !committedChord) return;
+    if (engine !== "neural" || magentaState !== "ready" || !committedChord) return;
 
     let cancelled = false;
     setMagentaWorking(true);
@@ -613,19 +613,19 @@ function App() {
               <select
                 value={engine}
                 onChange={(event) => {
-                  const next = event.target.value as "linear" | "dynamic";
+                  const next = event.target.value as "linear" | "neural";
                   setEngine(next);
-                  if (next === "dynamic") initMagenta();
+                  if (next === "neural") initMagenta();
                 }}
                 className={menuSelectClassName}
               >
                 <option value="linear">linear</option>
-                <option value="dynamic">dynamic</option>
+                <option value="neural">neural</option>
               </select>
-              {engine === "dynamic" && magentaState === "loading" && (
+              {engine === "neural" && magentaState === "loading" && (
                 <span className="animate-pulse text-xs text-warning">loading…</span>
               )}
-              {engine === "dynamic" && magentaState === "error" && (
+              {engine === "neural" && magentaState === "error" && (
                 <span className="text-xs text-muted/60">unavailable</span>
               )}
             </label>
@@ -692,7 +692,7 @@ function App() {
                     key={suggestion?.id ?? `simple-${index}`}
                     suggestion={suggestion}
                     opacity={1}
-                    isLoading={engine === "dynamic" && magentaWorking}
+                    isLoading={engine === "neural" && magentaWorking}
                     dimInactive
                   />
                 ))}
@@ -760,7 +760,7 @@ function App() {
                         key={suggestion?.id ?? `vertical-${index}`}
                         suggestion={suggestion}
                         opacity={1}
-                        isLoading={engine === "dynamic" && magentaWorking}
+                        isLoading={engine === "neural" && magentaWorking}
                       />
                     ))}
                   </div>
@@ -793,7 +793,7 @@ function App() {
               Connect a MIDI keyboard. Play a chord. ChordFlow detects it and suggests what to play next.
             </p>
             <p className="mt-3 text-sm leading-relaxed text-muted">
-              The <span className="text-ink">linear</span> engine uses hand-written jazz harmony rules — cadences, borrowed chords, voice leading. The <span className="text-ink">dynamic</span> engine uses{" "}
+              The <span className="text-ink">linear</span> engine uses hand-written jazz harmony rules — cadences, borrowed chords, voice leading. The <span className="text-ink">neural</span> engine uses{" "}
               <a
                 href="https://magenta.tensorflow.org/js"
                 target="_blank"
@@ -808,6 +808,9 @@ function App() {
               No backend. No account. Audio never leaves your device.
             </p>
 
+            <p className="mt-3 text-sm leading-relaxed text-muted">
+              Code 99% generated with Claude Code.
+            </p>
             <div className="mt-6 flex items-center gap-4 border-t border-white/10 pt-5">
               <a
                 href="https://github.com/itymarcel/chordflow"
