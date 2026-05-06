@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PianoKeyboard } from "./components/PianoKeyboard";
+import { PianoCard } from "./components/PianoCard";
 import { SuggestionCard } from "./components/SuggestionCard";
 import { useMidiInputs } from "./hooks";
 import { getMagentaState, getMagentaSuggestions, initMagenta, MagentaState, subscribeMagentaState } from "./magenta";
-import { analyzeChordNotes, ChordSuggestion, detectChord, DetectedChord, getChordSuggestions, ProgressionMode, SuggestionMood } from "./music";
+import { analyzeChordNotes, ChordSuggestion, detectChord, DetectedChord, getDetectedChordDegreeLabel, getChordSuggestions, ProgressionMode, SuggestionMood } from "./music";
 
 const CHORD_FADE_DURATION_MS = 5000;
 const NOTE_FADE_DURATION_MS = 900;
@@ -14,9 +14,12 @@ const CHORD_CAPTURE_DELAY_MS = 50;
 interface ChordSnapshot {
   id: string;
   chordText: string;
+  degreeLabel: string;
   notes: number[];
   suggestions: ChordSuggestion[];
 }
+
+type LayoutMode = "simple" | "advanced";
 
 function normalizePitchClass(note: number): number {
   return ((note % 12) + 12) % 12;
@@ -82,6 +85,7 @@ function App() {
   const [mood, setMood] = useState<SuggestionMood>("jazz");
   const [progressionMode, setProgressionMode] = useState<ProgressionMode>("auto");
   const [engine, setEngine] = useState<"linear" | "dynamic">("dynamic");
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("simple");
   const [magentaState, setMagentaState] = useState<MagentaState>(() => getMagentaState());
   const [magentaWorking, setMagentaWorking] = useState(false);
   const [releasedAt, setReleasedAt] = useState<number | null>(null);
@@ -135,6 +139,7 @@ function App() {
     return opacities;
   }, [effectiveActiveNotes, animationNow, releasedNoteTimes]);
   const displayedChordText = committedChordText;
+  const displayedChordDegreeLabel = useMemo(() => getDetectedChordDegreeLabel(committedChord), [committedChord]);
   const displayedChordAnalysis = useMemo(
     () => analyzeChordNotes(committedChord, displayedNotes.length ? displayedNotes : committedVoicingAnchor),
     [committedChord, committedVoicingAnchor, displayedNotes]
@@ -185,6 +190,7 @@ function App() {
     [suggestionSlots.bottom, suggestionSlots.top]
   );
   const previousSnapshots = useMemo(() => chordSnapshots.slice(1, 4).reverse(), [chordSnapshots]);
+  const previousSnapshot = useMemo(() => chordSnapshots[1] ?? null, [chordSnapshots]);
   const alignedPreviousSnapshots = useMemo(() => {
     const slots: Array<ChordSnapshot | null> = [null, null, null];
     previousSnapshots.forEach((snapshot, index) => {
@@ -193,6 +199,8 @@ function App() {
     });
     return slots;
   }, [previousSnapshots]);
+  const simpleSuggestions = useMemo(() => verticalSuggestions.slice(0, 3), [verticalSuggestions]);
+  const advancedSuggestions = useMemo(() => verticalSuggestions.slice(0, 3), [verticalSuggestions]);
 
   useEffect(() => {
     committedChordHistoryRef.current = committedChordHistory;
@@ -304,6 +312,7 @@ function App() {
         }
 
         const pendingChordText = [pendingChord.name, ...pendingChord.aliases].join(" or ");
+        const pendingChordDegreeLabel = getDetectedChordDegreeLabel(pendingChord);
         const nextSuggestions = engineRef.current === "dynamic"
           ? []
           : getChordSuggestions(pendingChord, moodRef.current, {
@@ -322,6 +331,7 @@ function App() {
           const snapshot: ChordSnapshot = {
             id: `${Date.now()}-${pendingChord.name}-${pendingNotes.join("-")}`,
             chordText: pendingChordText,
+            degreeLabel: pendingChordDegreeLabel,
             notes: pendingNotes,
             suggestions: nextSuggestions
           };
@@ -505,6 +515,40 @@ function App() {
           </div>
 
           <div className="ml-auto flex items-center gap-3">
+            {engine === "linear" && (
+              <>
+                <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
+                  <span>progression</span>
+                  <select
+                    value={progressionMode}
+                    onChange={(event) => setProgressionMode(event.target.value as ProgressionMode)}
+                    className="bg-transparent text-sm text-ink outline-none"
+                  >
+                    <option value="auto">auto</option>
+                    <option value="major_ii_v_i">ii-V-I major</option>
+                    <option value="minor_ii_v_i">iiø-V-i minor</option>
+                    <option value="turnaround">turnaround</option>
+                    <option value="backdoor">backdoor</option>
+                    <option value="backcycling">backcycling</option>
+                  </select>
+                </label>
+
+                <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
+                  <span>mood</span>
+                  <select
+                    value={mood}
+                    onChange={(event) => setMood(event.target.value as SuggestionMood)}
+                    className="bg-transparent text-sm text-ink outline-none"
+                  >
+                    <option value="jazz">jazz</option>
+                    <option value="pop">pop</option>
+                    <option value="blues">blues</option>
+                    <option value="gospel">gospel</option>
+                  </select>
+                </label>
+              </>
+            )}
+
             <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
               <input
                 type="checkbox"
@@ -537,132 +581,131 @@ function App() {
               )}
             </label>
 
-            {engine === "linear" && (
-              <>
-                <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
-                  <span>mood</span>
-                  <select
-                    value={mood}
-                    onChange={(event) => setMood(event.target.value as SuggestionMood)}
-                    className="bg-transparent text-sm text-ink outline-none"
-                  >
-                    <option value="jazz">jazz</option>
-                    <option value="pop">pop</option>
-                    <option value="blues">blues</option>
-                    <option value="gospel">gospel</option>
-                  </select>
-                </label>
-
-                <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
-                  <span>progression</span>
-                  <select
-                    value={progressionMode}
-                    onChange={(event) => setProgressionMode(event.target.value as ProgressionMode)}
-                    className="bg-transparent text-sm text-ink outline-none"
-                  >
-                    <option value="auto">auto</option>
-                    <option value="major_ii_v_i">ii-V-I major</option>
-                    <option value="minor_ii_v_i">iiø-V-i minor</option>
-                    <option value="turnaround">turnaround</option>
-                    <option value="backdoor">backdoor</option>
-                    <option value="backcycling">backcycling</option>
-                  </select>
-                </label>
-              </>
-            )}
+            <label className="flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-sm text-ink">
+              <span>layout</span>
+              <select
+                value={layoutMode}
+                onChange={(event) => setLayoutMode(event.target.value as LayoutMode)}
+                className="bg-transparent text-sm text-ink outline-none"
+              >
+                <option value="simple">simple</option>
+                <option value="advanced">advanced</option>
+              </select>
+            </label>
           </div>
         </div>
 
-        <div className="flex flex-1 items-start justify-center pt-8">
-          <div className="grid w-full grid-cols-4 items-start gap-5 pb-8">
-            <section className="contents">
-              {alignedPreviousSnapshots.map((snapshot, index) => (
-                <div
-                  key={`history-slot-${index}`}
-                  className="flex min-w-0 flex-col gap-4"
-                >
+        <div className={`flex flex-1 justify-center ${layoutMode === "simple" ? "items-center py-8" : "items-start pt-8"}`}>
+          {layoutMode === "simple" ? (
+            <div className="grid w-full max-w-[1600px] grid-cols-1 items-center gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)_minmax(0,0.95fr)]">
+              <div className="flex min-w-0 flex-col justify-center py-10">
+                <PianoCard
+                  opacity={previousSnapshot ? 0.42 : 0.12}
+                  topLabel={previousSnapshot?.degreeLabel ?? " "}
+                  topLabelVisible={!!previousSnapshot?.degreeLabel}
+                  noteSet={previousSnapshot?.notes ?? []}
+                  dimInactive={false}
+                  title={previousSnapshot?.chordText ?? "placeholder"}
+                  titleVisible={!!previousSnapshot}
+                />
+              </div>
+
+              <div className="flex min-w-0 flex-col justify-center py-10">
+                <PianoCard
+                  opacity={1}
+                  topLabel={displayedChordDegreeLabel || " "}
+                  topLabelVisible={!!displayedChordDegreeLabel}
+                  activeNotes={effectiveActiveNotes}
+                  activeOpacity={1}
+                  faded={false}
+                  centerViewport
+                  noteRoles={displayedChordAnalysis.noteRoles}
+                  viewportNotes={viewportNotes}
+                  title={displayedChordText || "placeholder"}
+                  titleVisible={!!displayedChordText}
+                />
+              </div>
+
+              <div className="flex min-w-0 flex-col gap-2 py-10">
+                {Array.from({ length: 3 }, (_, index) => simpleSuggestions[index] ?? null).map((suggestion, index) => (
+                  <SuggestionCard
+                    key={suggestion?.id ?? `simple-${index}`}
+                    suggestion={suggestion}
+                    opacity={1}
+                    isLoading={engine === "dynamic" && magentaWorking}
+                    dimInactive
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="grid w-full grid-cols-4 items-start gap-5 pb-8">
+              <section className="contents">
+                {alignedPreviousSnapshots.map((snapshot, index) => (
                   <div
-                    className="min-h-[188px] rounded-[30px] px-4 py-4"
-                    style={{ opacity: snapshot ? [0.25, 0.5, 0.75][index] : 0.12 }}
+                    key={`history-slot-${index}`}
+                    className="flex min-w-0 flex-col gap-4 py-10"
                   >
-                    <div className="grid min-h-[188px] w-full grid-rows-[26px_96px_42px] items-start">
-                      <div className="flex items-start justify-center text-center text-[11px] uppercase tracking-[0.16em] text-muted">
-                        <p className="opacity-0">{snapshot ? "previous" : " "}</p>
-                      </div>
-                      <div className="relative w-full min-h-[96px]">
-                        <PianoKeyboard
-                          activeNotes={[]}
-                          miniature
-                          compactPadding
-                          noteSet={snapshot?.notes ?? []}
-                          dimInactive
-                          className="w-full"
-                        />
-                      </div>
-                      <p className="flex min-h-[42px] items-start justify-center pt-2 text-center font-body text-lg text-ink">
-                        {snapshot?.chordText ?? " "}
-                      </p>
-                    </div>
-                  </div>
-
-                <div className="flex flex-col gap-2">
-                  {Array.from({ length: 4 }, (_, suggestionIndex) => snapshot?.suggestions[suggestionIndex] ?? null).map(
-                    (suggestion, suggestionIndex) => (
-                        <SuggestionCard
-                          key={suggestion?.id ?? `snapshot-${index}-suggestion-${suggestionIndex}`}
-                          suggestion={suggestion}
-                          opacity={snapshot ? [0.25, 0.5, 0.75][index] : 0.12}
-                          hideReason
-                          animateOpacity={false}
-                          dimInactive
-                        />
-                      )
-                    )}
-                  </div>
-                </div>
-              ))}
-            </section>
-
-            <div className="flex min-w-0 flex-col gap-4">
-              <div className="flex flex-col gap-3">
-                <div className="min-h-[188px] rounded-[30px] px-5 py-4">
-                  <div className="grid min-h-[188px] w-full grid-rows-[26px_96px_42px] items-start">
-                    <div className="flex items-start justify-center text-center text-[11px] uppercase tracking-[0.16em] text-muted">
-                      <p className="opacity-0">placeholder</p>
-                    </div>
-                    <div className="relative w-full min-h-[96px]">
-                      <PianoKeyboard
-                        activeNotes={displayedNotes}
-                        activeOpacity={effectiveActiveNotes.length ? 1 : fadeOpacity}
-                        faded={false}
-                        miniature
-                        compactPadding
-                        centerViewport
-                        noteRoles={displayedChordAnalysis.noteRoles}
-                        noteOpacities={displayedNoteOpacities}
-                        viewportNotes={viewportNotes}
-                        className="w-full"
-                      />
-                    </div>
-                    <p className="flex min-h-[42px] items-start justify-center pt-2 text-center font-body text-lg text-ink sm:text-xl">
-                      {displayedChordText}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  {verticalSuggestions.map((suggestion, index) => (
-                    <SuggestionCard
-                      key={suggestion?.id ?? `vertical-${index}`}
-                      suggestion={suggestion}
-                      opacity={1}
-                      isLoading={engine === "dynamic" && magentaWorking}
+                    <PianoCard
+                      opacity={snapshot ? [0.25, 0.5, 0.75][index] : 0.12}
+                      animateOpacity={false}
+                      topLabel={snapshot?.degreeLabel ?? " "}
+                      topLabelVisible={!!snapshot?.degreeLabel}
+                      noteSet={snapshot?.notes ?? []}
+                      dimInactive
+                      title={snapshot?.chordText ?? "placeholder"}
+                      titleVisible={!!snapshot}
                     />
-                  ))}
+
+                    <div className="flex flex-col gap-2">
+                      {Array.from({ length: 3 }, (_, suggestionIndex) => snapshot?.suggestions[suggestionIndex] ?? null).map(
+                        (suggestion, suggestionIndex) => (
+                          <SuggestionCard
+                            key={suggestion?.id ?? `snapshot-${index}-suggestion-${suggestionIndex}`}
+                            suggestion={suggestion}
+                            opacity={snapshot ? [0.25, 0.5, 0.75][index] : 0.12}
+                            hideReason
+                            animateOpacity={false}
+                            dimInactive
+                          />
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </section>
+
+              <div className="flex min-w-0 flex-col gap-4 py-10">
+                <div className="flex flex-col gap-4">
+                  <PianoCard
+                    opacity={1}
+                    topLabel={displayedChordDegreeLabel || " "}
+                    topLabelVisible={!!displayedChordDegreeLabel}
+                    activeNotes={displayedNotes}
+                    activeOpacity={effectiveActiveNotes.length ? 1 : fadeOpacity}
+                    faded={false}
+                    centerViewport
+                    noteRoles={displayedChordAnalysis.noteRoles}
+                    noteOpacities={displayedNoteOpacities}
+                    viewportNotes={viewportNotes}
+                    title={displayedChordText || "placeholder"}
+                    titleVisible={!!displayedChordText}
+                  />
+
+                  <div className="flex flex-col gap-2">
+                    {advancedSuggestions.map((suggestion, index) => (
+                      <SuggestionCard
+                        key={suggestion?.id ?? `vertical-${index}`}
+                        suggestion={suggestion}
+                        opacity={1}
+                        isLoading={engine === "dynamic" && magentaWorking}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </main>

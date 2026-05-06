@@ -577,6 +577,14 @@ function detectChordRoles(chord: DetectedChord): ChordRole[] {
   return roles.sort((a, b) => b.weight - a.weight);
 }
 
+export function getDetectedChordDegreeLabel(chord: DetectedChord | null): string {
+  if (!chord) {
+    return "";
+  }
+
+  return detectChordRoles(chord)[0]?.degree ?? "";
+}
+
 function buildSuggestionFromDegree(context: KeyContext, degree: string, quality: Exclude<ChordQuality, "unknown">): ChordSuggestion {
   const root = degreeToPitchClass(context.keyRoot, context.mode, degree);
   const rootMidi = 60 + root - (root >= 9 ? 12 : 0);

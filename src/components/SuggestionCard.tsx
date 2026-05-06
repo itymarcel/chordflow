@@ -1,6 +1,6 @@
 import { Loader } from "lucide-react";
 import { ChordSuggestion, splitHands } from "../music";
-import { PianoKeyboard } from "./PianoKeyboard";
+import { PianoCard } from "./PianoCard";
 
 interface SuggestionCardProps {
   suggestion: ChordSuggestion | null;
@@ -21,22 +21,19 @@ export function SuggestionCard({
 }: SuggestionCardProps) {
   if (!suggestion && isLoading) {
     return (
-      <div
-        className={`min-h-[248px] rounded-[30px] px-5 py-4 ${animateOpacity ? "transition-opacity duration-300" : ""}`}
-        style={{ opacity }}
-      >
-        <PianoKeyboard activeNotes={[]} miniature compactPadding noteSet={[]} noteHands={{}} />
-        <p className="mt-2 text-center text-[1.15rem] text-ink">
-          <Loader className="inline-block size-4 animate-spin align-middle text-muted" />
-        </p>
-        <p className="mt-1 min-h-[1.5rem]" />
-        <p className="mt-1 min-h-[1.5rem]" />
-      </div>
+      <PianoCard
+        opacity={opacity}
+        animateOpacity={animateOpacity}
+        dimInactive
+        topLabel=" "
+        title={<Loader className="inline-block size-4 animate-spin align-middle text-muted" />}
+        titleVisible
+      />
     );
   }
 
   if (!suggestion) {
-    return <div className="min-h-[248px] rounded-[30px] px-5 py-4 opacity-20" style={{ opacity }} />;
+    return <PianoCard opacity={opacity * 0.2} animateOpacity={animateOpacity} />;
   }
 
   const { leftHand, rightHand } = splitHands(suggestion.notes);
@@ -46,25 +43,18 @@ export function SuggestionCard({
   ]);
 
   return (
-    <div
-      className={`min-h-[248px] rounded-[30px] px-5 py-4 ${animateOpacity ? "transition-opacity duration-300" : ""}`}
-      style={{ opacity }}
-    >
-      <PianoKeyboard
-        activeNotes={[]}
-        miniature
-        compactPadding
-        noteSet={suggestion.notes}
-        noteHands={noteHands}
-        dimInactive={dimInactive}
-      />
-      <p className="mt-2 text-center text-[1.15rem] text-ink">{suggestion.label}</p>
-      <p className="mt-1 text-center text-[13px] font-semibold uppercase tracking-[0.22em] text-ink/80">
-        {suggestion.degreeLabel}
-      </p>
-      <p className="mt-1 min-h-[1.5rem] text-center text-sm text-muted" style={{ opacity: hideReason ? 0 : 1 }}>
-        {hideReason ? "placeholder" : suggestion.reason}
-      </p>
-    </div>
+    <PianoCard
+      opacity={opacity}
+      animateOpacity={animateOpacity}
+      topLabel={suggestion.degreeLabel}
+      topLabelVisible
+      noteSet={suggestion.notes}
+      noteHands={noteHands}
+      dimInactive={dimInactive}
+      title={suggestion.label}
+      titleVisible
+      reason={hideReason ? "placeholder" : suggestion.reason}
+      reasonVisible={!hideReason}
+    />
   );
 }
