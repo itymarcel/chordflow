@@ -6,11 +6,11 @@ import { useMidiInputs } from "./hooks";
 import { getMagentaState, getMagentaSuggestions, initMagenta, MagentaState, subscribeMagentaState } from "./magenta";
 import { analyzeChordNotes, ChordSuggestion, detectChord, DetectedChord, getDetectedChordDegreeLabel, getChordSuggestions, ProgressionMode, SuggestionMood } from "./music";
 
-const CHORD_FADE_DURATION_MS = 5000;
 const NOTE_FADE_DURATION_MS = 900;
+const GLOW_FADE_DURATION_MS = 1000;
 const PULSE_DURATION_MS = 7500;
 const PULSE_COOLDOWN_MS = 120;
-const CHORD_CAPTURE_DELAY_MS = 50;
+const CHORD_GROUP_WINDOW_MS = 100;
 
 interface ChordSnapshot {
   id: string;
@@ -89,8 +89,6 @@ function App() {
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("simple");
   const [magentaState, setMagentaState] = useState<MagentaState>(() => getMagentaState());
   const [magentaWorking, setMagentaWorking] = useState(false);
-  const [releasedAt, setReleasedAt] = useState<number | null>(null);
-  const [fadeOpacity, setFadeOpacity] = useState(1);
   const [committedSuggestions, setCommittedSuggestions] = useState<ChordSuggestion[]>([]);
   const [committedChord, setCommittedChord] = useState<DetectedChord | null>(null);
   const [committedChordHistory, setCommittedChordHistory] = useState<DetectedChord[]>([]);
@@ -99,13 +97,15 @@ function App() {
   const [committedVoicingAnchor, setCommittedVoicingAnchor] = useState<number[]>([]);
   const [viewportNotes, setViewportNotes] = useState<number[]>([]);
   const [pulseToken, setPulseToken] = useState(0);
-  const [releasedNoteTimes, setReleasedNoteTimes] = useState<Record<number, number>>({});
+  const [releasedOverlayNoteTimes, setReleasedOverlayNoteTimes] = useState<Record<number, number>>({});
   const [animationNow, setAnimationNow] = useState(() => Date.now());
   const previousActiveNotesRef = useRef<number[]>([]);
   const lastPulseAtRef = useRef(0);
-  const commitTimerRef = useRef<number | null>(null);
-  const pendingCommitNotesRef = useRef<number[]>([]);
+  const noteGroupStartedAtRef = useRef<number | null>(null);
+  const noteGroupNotesRef = useRef<number[]>([]);
+  const noteGroupTimerRef = useRef<number | null>(null);
   const committedChordHistoryRef = useRef<DetectedChord[]>([]);
+  const committedVoicingAnchorRef = useRef<number[]>([]);
   const moodRef = useRef<SuggestionMood>(mood);
   const progressionModeRef = useRef<ProgressionMode>(progressionMode);
   const engineRef = useRef<"linear" | "dynamic">(engine);
@@ -118,32 +118,72 @@ function App() {
 
     return unique.slice(0, 4);
   }, [committedSuggestions]);
-  const displayedNotes = useMemo(() => {
-    const noteSet = new Set(effectiveActiveNotes);
-    Object.keys(releasedNoteTimes).forEach((note) => noteSet.add(Number(note)));
-    return Array.from(noteSet).sort((a, b) => a - b);
-  }, [effectiveActiveNotes, releasedNoteTimes]);
-  const displayedNoteOpacities = useMemo(() => {
+  const observationReleasedNotes = useMemo(
+    () => Object.keys(releasedOverlayNoteTimes).map(Number).sort((a, b) => a - b),
+    [releasedOverlayNoteTimes]
+  );
+  const observationOverlayNotes = useMemo(() => {
+    const committedSet = new Set(committedVoicingAnchor);
+    return effectiveActiveNotes.filter((note) => !committedSet.has(note)).sort((a, b) => a - b);
+  }, [committedVoicingAnchor, effectiveActiveNotes]);
+  const observationNotes = useMemo(() => {
+    return Array.from(new Set([...committedVoicingAnchor, ...observationOverlayNotes, ...observationReleasedNotes])).sort(
+      (a, b) => a - b
+    );
+  }, [committedVoicingAnchor, observationOverlayNotes, observationReleasedNotes]);
+  const observationNoteOpacities = useMemo(() => {
     const opacities: Record<number, number> = {};
 
-    effectiveActiveNotes.forEach((note) => {
+    committedVoicingAnchor.forEach((note) => {
       opacities[note] = 1;
     });
 
-    Object.entries(releasedNoteTimes).forEach(([note, startedAt]) => {
+    observationOverlayNotes.forEach((note) => {
+      opacities[note] = 1;
+    });
+
+    observationReleasedNotes.forEach((note) => {
+      const startedAt = releasedOverlayNoteTimes[note];
+      if (startedAt === undefined) {
+        return;
+      }
       const opacity = Math.max(0, 1 - (animationNow - startedAt) / NOTE_FADE_DURATION_MS);
       if (opacity > 0) {
-        opacities[Number(note)] = opacity;
+        opacities[note] = opacity;
       }
     });
 
     return opacities;
-  }, [effectiveActiveNotes, animationNow, releasedNoteTimes]);
+  }, [animationNow, committedVoicingAnchor, observationOverlayNotes, observationReleasedNotes, releasedOverlayNoteTimes]);
+  const observationGlowNotes = useMemo(() => {
+    const noteSet = new Set(observationOverlayNotes);
+    observationReleasedNotes.forEach((note) => {
+      noteSet.add(note);
+    });
+    return Array.from(noteSet).sort((a, b) => a - b);
+  }, [observationOverlayNotes, observationReleasedNotes]);
+  const observationGlowOpacities = useMemo(() => {
+    const opacities: Record<number, number> = {};
+
+    observationOverlayNotes.forEach((note) => {
+      opacities[note] = 1;
+    });
+
+    Object.entries(releasedOverlayNoteTimes).forEach(([note, startedAt]) => {
+      const numericNote = Number(note);
+      const opacity = Math.max(0, 1 - (animationNow - startedAt) / GLOW_FADE_DURATION_MS);
+      if (opacity > 0) {
+        opacities[numericNote] = opacity;
+      }
+    });
+
+    return opacities;
+  }, [animationNow, observationOverlayNotes, releasedOverlayNoteTimes]);
   const displayedChordText = committedChordText;
   const displayedChordDegreeLabel = useMemo(() => getDetectedChordDegreeLabel(committedChord), [committedChord]);
   const displayedChordAnalysis = useMemo(
-    () => analyzeChordNotes(committedChord, displayedNotes.length ? displayedNotes : committedVoicingAnchor),
-    [committedChord, committedVoicingAnchor, displayedNotes]
+    () => analyzeChordNotes(committedChord, observationNotes.length ? observationNotes : committedVoicingAnchor),
+    [committedChord, committedVoicingAnchor, observationNotes]
   );
   const recommitSuggestionHistory = useMemo(() => committedChordHistory.slice(1), [committedChordHistory]);
   const suggestionDisplaySet = useMemo(() => {
@@ -211,6 +251,10 @@ function App() {
   }, [committedChordHistory]);
 
   useEffect(() => {
+    committedVoicingAnchorRef.current = committedVoicingAnchor;
+  }, [committedVoicingAnchor]);
+
+  useEffect(() => {
     moodRef.current = mood;
   }, [mood]);
 
@@ -229,11 +273,57 @@ function App() {
 
   useEffect(() => {
     return () => {
-      if (commitTimerRef.current !== null) {
-        window.clearTimeout(commitTimerRef.current);
+      if (noteGroupTimerRef.current !== null) {
+        window.clearTimeout(noteGroupTimerRef.current);
       }
     };
   }, []);
+
+  function commitGroupedNotes(groupedNotes: number[]) {
+    const pendingNotes = [...groupedNotes].sort((a, b) => a - b);
+    setCommittedVoicingAnchor(pendingNotes);
+    setReleasedOverlayNoteTimes((current) => {
+      const next = { ...current };
+      pendingNotes.forEach((note) => {
+        delete next[note];
+      });
+      return next;
+    });
+
+    const pendingChord = detectChord(pendingNotes);
+    if (!pendingChord) {
+      setCommittedChord(null);
+      setCommittedSuggestions([]);
+      setCommittedChordText("");
+      return;
+    }
+
+    const pendingChordText = [pendingChord.name, ...pendingChord.aliases].join(" or ");
+    const pendingChordDegreeLabel = getDetectedChordDegreeLabel(pendingChord);
+    const nextSuggestions = engineRef.current === "dynamic"
+      ? []
+      : getChordSuggestions(pendingChord, moodRef.current, {
+        recentChords: committedChordHistoryRef.current,
+        progressionMode: progressionModeRef.current
+      })
+        .filter((suggestion, index, all) => all.findIndex((entry) => entry.id === suggestion.id) === index)
+        .slice(0, 4);
+
+    setCommittedChord(pendingChord);
+    setCommittedSuggestions(nextSuggestions);
+    setCommittedChordText(pendingChordText);
+    setCommittedChordHistory((current) => [pendingChord, ...current].slice(0, 4));
+    setChordSnapshots((current) => {
+      const snapshot: ChordSnapshot = {
+        id: `${Date.now()}-${pendingChord.name}-${pendingNotes.join("-")}`,
+        chordText: pendingChordText,
+        degreeLabel: pendingChordDegreeLabel,
+        notes: pendingNotes,
+        suggestions: nextSuggestions
+      };
+      return [snapshot, ...current].slice(0, 4);
+    });
+  }
 
   useEffect(() => {
     if (isPaused) {
@@ -241,25 +331,6 @@ function App() {
     }
 
     const previousNotes = previousActiveNotesRef.current;
-
-    if (!effectiveActiveNotes.length) {
-      if (previousNotes.length) {
-        const releasedAtNow = Date.now();
-        setReleasedNoteTimes((current) => {
-          const next = { ...current };
-          previousNotes.forEach((note) => {
-            next[note] = releasedAtNow;
-          });
-          return next;
-        });
-        setReleasedAt(Date.now());
-      }
-      previousActiveNotesRef.current = [];
-      return;
-    }
-
-    setReleasedAt(null);
-    setFadeOpacity(1);
 
     setViewportNotes((current) => {
       if (!current.length || !previousNotes.length) {
@@ -281,69 +352,56 @@ function App() {
     const previousSet = new Set(previousNotes);
     const newNotes = effectiveActiveNotes.filter((note) => !previousSet.has(note));
     const releasedNotes = previousNotes.filter((note) => !effectiveActiveNotes.includes(note));
+    const now = Date.now();
 
     if (newNotes.length || releasedNotes.length) {
-      setReleasedNoteTimes((current) => {
+      setReleasedOverlayNoteTimes((current) => {
         const next = { ...current };
         newNotes.forEach((note) => {
           delete next[note];
         });
         const releasedAtNow = Date.now();
+        const committedSet = new Set(committedVoicingAnchorRef.current);
         releasedNotes.forEach((note) => {
-          next[note] = releasedAtNow;
+          if (!committedSet.has(note)) {
+            next[note] = releasedAtNow;
+          }
         });
         return next;
       });
     }
 
     if (newNotes.length) {
-      pendingCommitNotesRef.current = Array.from(
-        new Set([...pendingCommitNotesRef.current, ...effectiveActiveNotes])
-      ).sort((a, b) => a - b);
+      const shouldStartNewGroup =
+        noteGroupStartedAtRef.current === null ||
+        now - noteGroupStartedAtRef.current > CHORD_GROUP_WINDOW_MS;
 
-      if (commitTimerRef.current !== null) {
-        window.clearTimeout(commitTimerRef.current);
+      if (shouldStartNewGroup) {
+        noteGroupStartedAtRef.current = now;
+        noteGroupNotesRef.current = [...effectiveActiveNotes].sort((a, b) => a - b);
+      } else {
+        noteGroupNotesRef.current = Array.from(new Set([...noteGroupNotesRef.current, ...effectiveActiveNotes])).sort(
+          (a, b) => a - b
+        );
       }
 
-      commitTimerRef.current = window.setTimeout(() => {
-        const pendingNotes = [...pendingCommitNotesRef.current].sort((a, b) => a - b);
-        pendingCommitNotesRef.current = [];
-        commitTimerRef.current = null;
+      if (noteGroupTimerRef.current !== null) {
+        window.clearTimeout(noteGroupTimerRef.current);
+      }
 
-        const pendingChord = detectChord(pendingNotes);
-        if (!pendingChord) {
-          return;
+      const groupStartedAt = noteGroupStartedAtRef.current;
+      const remainingMs = groupStartedAt === null ? CHORD_GROUP_WINDOW_MS : Math.max(0, CHORD_GROUP_WINDOW_MS - (now - groupStartedAt));
+      noteGroupTimerRef.current = window.setTimeout(() => {
+        const groupedNotes = [...noteGroupNotesRef.current];
+        noteGroupTimerRef.current = null;
+        noteGroupStartedAtRef.current = null;
+        noteGroupNotesRef.current = [];
+
+        if (groupedNotes.length >= 3) {
+          commitGroupedNotes(groupedNotes);
         }
+      }, remainingMs);
 
-        const pendingChordText = [pendingChord.name, ...pendingChord.aliases].join(" or ");
-        const pendingChordDegreeLabel = getDetectedChordDegreeLabel(pendingChord);
-        const nextSuggestions = engineRef.current === "dynamic"
-          ? []
-          : getChordSuggestions(pendingChord, moodRef.current, {
-            recentChords: committedChordHistoryRef.current,
-            progressionMode: progressionModeRef.current
-          })
-            .filter((suggestion, index, all) => all.findIndex((entry) => entry.id === suggestion.id) === index)
-            .slice(0, 4);
-
-        setCommittedChord(pendingChord);
-        setCommittedSuggestions(nextSuggestions);
-        setCommittedChordText(pendingChordText);
-        setCommittedVoicingAnchor(pendingNotes);
-        setCommittedChordHistory((current) => [pendingChord, ...current].slice(0, 4));
-        setChordSnapshots((current) => {
-          const snapshot: ChordSnapshot = {
-            id: `${Date.now()}-${pendingChord.name}-${pendingNotes.join("-")}`,
-            chordText: pendingChordText,
-            degreeLabel: pendingChordDegreeLabel,
-            notes: pendingNotes,
-            suggestions: nextSuggestions
-          };
-          return [snapshot, ...current].slice(0, 4);
-        });
-      }, CHORD_CAPTURE_DELAY_MS);
-
-      const now = Date.now();
       if (now - lastPulseAtRef.current >= PULSE_COOLDOWN_MS) {
         lastPulseAtRef.current = now;
         setPulseToken((current) => current + 1);
@@ -374,16 +432,15 @@ function App() {
         const next = !current;
         if (!current) {
           setPausedNotes(activeNotes);
-          if (commitTimerRef.current !== null) {
-            window.clearTimeout(commitTimerRef.current);
-            commitTimerRef.current = null;
+          if (noteGroupTimerRef.current !== null) {
+            window.clearTimeout(noteGroupTimerRef.current);
+            noteGroupTimerRef.current = null;
           }
-          pendingCommitNotesRef.current = [];
+          noteGroupStartedAtRef.current = null;
+          noteGroupNotesRef.current = [];
         } else {
           previousActiveNotesRef.current = activeNotes;
-          setReleasedNoteTimes({});
-          setReleasedAt(null);
-          setFadeOpacity(1);
+          setReleasedOverlayNoteTimes({});
         }
         return next;
       });
@@ -441,33 +498,17 @@ function App() {
   }, [committedChord, committedVoicingAnchor, engine, magentaState]);
 
   useEffect(() => {
-    if (releasedAt === null) {
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      const elapsed = Date.now() - releasedAt;
-      const nextOpacity = Math.max(0, 1 - elapsed / CHORD_FADE_DURATION_MS);
-      setFadeOpacity(nextOpacity);
-
-      if (nextOpacity <= 0) {
-        window.clearInterval(interval);
-      }
-    }, 80);
-
-    return () => window.clearInterval(interval);
-  }, [releasedAt]);
-
-  useEffect(() => {
-    if (!Object.keys(releasedNoteTimes).length) {
+    if (!Object.keys(releasedOverlayNoteTimes).length) {
       return;
     }
 
     const interval = window.setInterval(() => {
       const now = Date.now();
       setAnimationNow(now);
-      setReleasedNoteTimes((current) => {
-        const nextEntries = Object.entries(current).filter(([, startedAt]) => now - startedAt < NOTE_FADE_DURATION_MS);
+      setReleasedOverlayNoteTimes((current) => {
+        const nextEntries = Object.entries(current).filter(
+          ([, startedAt]) => now - startedAt < Math.max(NOTE_FADE_DURATION_MS, GLOW_FADE_DURATION_MS)
+        );
         if (nextEntries.length === Object.keys(current).length) {
           return current;
         }
@@ -476,7 +517,7 @@ function App() {
     }, 80);
 
     return () => window.clearInterval(interval);
-  }, [releasedNoteTimes]);
+  }, [releasedOverlayNoteTimes]);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-base px-5 py-5 text-ink">
@@ -622,12 +663,15 @@ function App() {
                   opacity={1}
                   topLabel={engine === "linear" ? (displayedChordDegreeLabel || " ") : "current"}
                   topLabelVisible={engine === "linear" ? !!displayedChordDegreeLabel : !!displayedChordText}
-                  activeNotes={effectiveActiveNotes}
+                  activeNotes={observationNotes}
+                  noteOpacities={observationNoteOpacities}
+                  glowNotes={observationGlowNotes}
+                  glowOpacities={observationGlowOpacities}
                   activeOpacity={1}
                   faded={false}
                   centerViewport
                   noteRoles={displayedChordAnalysis.noteRoles}
-                  viewportNotes={viewportNotes}
+                  viewportNotes={observationNotes.length ? observationNotes : viewportNotes}
                   title={displayedChordText || "placeholder"}
                   titleVisible={!!displayedChordText}
                 />
@@ -688,13 +732,15 @@ function App() {
                     opacity={1}
                     topLabel=" "
                     topLabelVisible={false}
-                    activeNotes={displayedNotes}
-                    activeOpacity={effectiveActiveNotes.length ? 1 : fadeOpacity}
+                    activeNotes={observationNotes}
+                    noteOpacities={observationNoteOpacities}
+                    glowNotes={observationGlowNotes}
+                    glowOpacities={observationGlowOpacities}
+                    activeOpacity={1}
                     faded={false}
                     centerViewport
                     noteRoles={displayedChordAnalysis.noteRoles}
-                    noteOpacities={displayedNoteOpacities}
-                    viewportNotes={viewportNotes}
+                    viewportNotes={observationNotes.length ? observationNotes : viewportNotes}
                     title={displayedChordText || "placeholder"}
                     titleVisible={!!displayedChordText}
                   />
