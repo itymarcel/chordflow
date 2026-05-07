@@ -44,24 +44,45 @@ export function initMagenta(): void {
 
 const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 
+// Scale intervals per chord quality used to enrich the seed with passing tones
+const QUALITY_SCALE_INTERVALS: Partial<Record<string, number[]>> = {
+  maj:     [0, 2, 4, 5, 7, 9, 11],  // ionian
+  maj7:    [0, 2, 4, 5, 7, 9, 11],
+  maj9:    [0, 2, 4, 5, 7, 9, 11],
+  "6":     [0, 2, 4, 5, 7, 9, 11],
+  min:     [0, 2, 3, 5, 7, 9, 10],  // dorian
+  min7:    [0, 2, 3, 5, 7, 9, 10],
+  min9:    [0, 2, 3, 5, 7, 9, 10],
+  min6:    [0, 2, 3, 5, 7, 9, 10],
+  minMaj7: [0, 2, 3, 5, 7, 8, 11],  // melodic minor
+  "7":     [0, 2, 4, 5, 7, 9, 10],  // mixolydian
+  "9":     [0, 2, 4, 5, 7, 9, 10],
+  m7b5:    [0, 1, 3, 5, 6, 8, 10],  // locrian
+  dim:     [0, 2, 3, 5, 6, 8, 9, 11], // whole-half diminished
+  dim7:    [0, 2, 3, 5, 6, 8, 9, 11],
+  aug:     [0, 2, 4, 6, 8, 10],     // whole tone
+  sus2:    [0, 2, 5, 7, 9, 10],
+  sus4:    [0, 2, 5, 7, 9, 10],
+};
+
 const QUALITY_INTERVALS: Partial<Record<string, number[]>> = {
-  maj: [0, 4, 7],
-  min: [0, 3, 7],
-  dim: [0, 3, 6],
-  aug: [0, 4, 8],
-  "6": [0, 4, 7, 9],
-  min6: [0, 3, 7, 9],
-  "7": [0, 4, 7, 10],
-  "9": [0, 4, 7, 10, 14],
-  maj7: [0, 4, 7, 11],
-  maj9: [0, 4, 7, 11, 14],
-  min7: [0, 3, 7, 10],
-  min9: [0, 3, 7, 10, 14],
-  minMaj7: [0, 3, 7, 11],
-  m7b5: [0, 3, 6, 10],
-  dim7: [0, 3, 6, 9],
-  sus2: [0, 2, 7],
-  sus4: [0, 5, 7]
+  maj:     [0, 4, 7],
+  min:     [0, 3, 7],
+  dim:     [0, 3, 6],
+  aug:     [0, 4, 8],
+  "6":     [0, 4, 7, 9],
+  min6:    [0, 3, 7, 9],
+  "7":     [0, 4, 7, 10, 14, 21],       // dom13:  R 3 5 b7 9 13
+  "9":     [0, 4, 7, 10, 14, 21],       // dom13 (9 already included)
+  maj7:    [0, 4, 7, 11, 14],           // maj9:   R 3 5 7 9
+  maj9:    [0, 4, 7, 11, 14, 21],       // maj13:  R 3 5 7 9 13
+  min7:    [0, 3, 7, 10, 14, 17],       // min11:  R b3 5 b7 9 11
+  min9:    [0, 3, 7, 10, 14, 17, 21],   // min13:  R b3 5 b7 9 11 13
+  minMaj7: [0, 3, 7, 11, 14],           // minMaj9: R b3 5 7 9
+  m7b5:    [0, 3, 6, 10, 14],           // half-dim 9
+  dim7:    [0, 3, 6, 9],
+  sus2:    [0, 2, 7],
+  sus4:    [0, 5, 7]
 };
 
 const SUFFIX_MAP: Partial<Record<string, string>> = {
@@ -113,18 +134,28 @@ export async function getMagentaSuggestions(
   const sorted = [...anchorNotes].map(clampToMelodyRange).sort((a, b) => a - b);
   if (!sorted.length) return [];
 
-  // Arpeggiate seed: 8 sixteenth notes cycling through anchorNotes
+  // Build scale passing tones for the chord's mode, excluding chord-tone pitch classes
+  const chordPCSet = new Set(sorted.map(normPc));
+  const baseNote = 60 + chord.root - (chord.root >= 9 ? 12 : 0);
+  const scaleIntervals = QUALITY_SCALE_INTERVALS[chord.quality] ?? [0, 2, 4, 5, 7, 9, 11];
+  const passingTones = scaleIntervals
+    .map((i) => clampToMelodyRange(baseNote + i))
+    .filter((n) => !chordPCSet.has(normPc(n)));
+
+  // 16-step seed: alternate chord tones and scale passing tones for melodic context
+  const SEED_STEPS = 16;
   const stepSec = 0.125; // sixteenth note at 120 BPM
   const rawSeed = {
     ticksPerQuarter: 220,
-    totalTime: 8 * stepSec,
+    totalTime: SEED_STEPS * stepSec,
     tempos: [{ time: 0, qpm: 120 }],
     timeSignatures: [{ time: 0, numerator: 4, denominator: 4 }],
-    notes: Array.from({ length: 8 }, (_, i) => ({
-      pitch: sorted[i % sorted.length],
+    notes: Array.from({ length: SEED_STEPS }, (_, i) => ({
+      // interleave: even indices → chord tone, odd → passing tone (falls back to chord)
+      pitch: i % 2 === 0 ? sorted[Math.floor(i / 2) % sorted.length] : (passingTones[(Math.floor(i / 2)) % (passingTones.length || 1)] ?? sorted[0]),
       startTime: i * stepSec,
       endTime: (i + 1) * stepSec,
-      velocity: 80
+      velocity: 70 + (i % 4 === 0 ? 15 : 0) // slight accent on beat
     }))
   };
 
@@ -143,18 +174,21 @@ export async function getMagentaSuggestions(
   const currentPCSet = new Set(chord.pitchClasses);
   const perRunCounts: Record<number, number>[] = [];
 
-  for (const temperature of [0.8, 1.1, 1.4, 1.7]) {
+  // Temperatures shifted up: drop the boring 0.8 run, push into more exploratory range
+  for (const temperature of [1.1, 1.5, 1.9, 2.3]) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result: any = await rnn.continueSequence(quantized, 20, temperature);
+      const result: any = await rnn.continueSequence(quantized, 32, temperature);
       const notes: { pitch?: number }[] = result?.notes ?? [];
-      if (notes.length < 4) continue;
+      if (notes.length < 8) continue;
 
+      // Analyse only the tail — early notes are still anchored to the seed
       const counts: Record<number, number> = {};
-      notes.slice(4).forEach((note) => {
+      notes.slice(-16).forEach((note) => {
         if (typeof note.pitch !== "number") return;
         const pc = normPc(note.pitch);
-        counts[pc] = (counts[pc] ?? 0) + (currentPCSet.has(pc) ? 1 : 1.5);
+        // Aggressively suppress current chord tones; amplify anything new
+        counts[pc] = (counts[pc] ?? 0) + (currentPCSet.has(pc) ? 0.3 : 3.0);
       });
       perRunCounts.push(counts);
     } catch {
@@ -166,14 +200,14 @@ export async function getMagentaSuggestions(
   const seenLabels = new Set<string>();
 
   for (const counts of perRunCounts) {
-    if (suggestions.length >= 4) break;
+    if (suggestions.length >= 6) break;
 
     const topPCs = Object.entries(counts)
       .sort(([, a], [, b]) => b - a)
       .map(([pc]) => Number(pc));
 
     for (const size of [4, 3, 5]) {
-      if (suggestions.length >= 4) break;
+      if (suggestions.length >= 6) break;
       if (topPCs.length < size) continue;
 
       const testNotes = topPCs

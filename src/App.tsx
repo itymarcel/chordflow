@@ -9,6 +9,7 @@ import { analyzeChordNotes, ChordSuggestion, detectChord, DetectedChord, getDete
 const PULSE_DURATION_MS = 7500;
 const PULSE_COOLDOWN_MS = 120;
 const CHORD_GROUP_WINDOW_MS = 100;
+const PAUSE_RESET_MS = 3000;
 
 interface ChordSnapshot {
   id: string;
@@ -84,6 +85,7 @@ function App() {
   const [mood, setMood] = useState<SuggestionMood>("jazz");
   const [progressionMode, setProgressionMode] = useState<ProgressionMode>("auto");
   const [engine, setEngine] = useState<"linear" | "neural">("neural");
+  const [neuralSuggestionCount, setNeuralSuggestionCount] = useState(4);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("simple");
   const [showInfo, setShowInfo] = useState(false);
   const [magentaState, setMagentaState] = useState<MagentaState>(() => getMagentaState());
@@ -101,19 +103,21 @@ function App() {
   const noteGroupStartedAtRef = useRef<number | null>(null);
   const noteGroupNotesRef = useRef<number[]>([]);
   const noteGroupTimerRef = useRef<number | null>(null);
+  const pauseResetTimerRef = useRef<number | null>(null);
   const committedChordHistoryRef = useRef<DetectedChord[]>([]);
   const committedVoicingAnchorRef = useRef<number[]>([]);
   const moodRef = useRef<SuggestionMood>(mood);
   const progressionModeRef = useRef<ProgressionMode>(progressionMode);
   const engineRef = useRef<"linear" | "neural">(engine);
   const effectiveActiveNotes = isPaused ? pausedNotes : activeNotes;
+  const displayCount = engine === "neural" ? neuralSuggestionCount : 3;
 
   const displayedCommittedSuggestions = useMemo(() => {
     const unique = committedSuggestions.filter((suggestion, index, all) => {
       return all.findIndex((entry) => entry.id === suggestion.id) === index;
     });
 
-    return unique.slice(0, 4);
+    return unique.slice(0, 6);
   }, [committedSuggestions]);
   const observationOverlayNotes = useMemo(() => {
     const committedSet = new Set(committedVoicingAnchor);
@@ -150,14 +154,17 @@ function App() {
     const top: (typeof suggestionDisplaySet)[number][] = [...upward];
     const bottom: (typeof suggestionDisplaySet)[number][] = [...downward];
 
-    while (top.length < 2 && remaining.length) {
+    const topCount = Math.ceil(displayCount / 2);
+    const bottomCount = Math.floor(displayCount / 2);
+
+    while (top.length < topCount && remaining.length) {
       const next = remaining.shift();
       if (next) {
         top.push(next);
       }
     }
 
-    while (bottom.length < 2 && remaining.length) {
+    while (bottom.length < bottomCount && remaining.length) {
       const next = remaining.shift();
       if (next) {
         bottom.push(next);
@@ -165,10 +172,10 @@ function App() {
     }
 
     return {
-      top: Array.from({ length: 2 }, (_, index) => top[index] ?? null),
-      bottom: Array.from({ length: 2 }, (_, index) => bottom[index] ?? null)
+      top: Array.from({ length: topCount }, (_, index) => top[index] ?? null),
+      bottom: Array.from({ length: bottomCount }, (_, index) => bottom[index] ?? null)
     };
-  }, [suggestionDisplaySet]);
+  }, [suggestionDisplaySet, displayCount]);
   const verticalSuggestions = useMemo(
     () => [...suggestionSlots.top, ...suggestionSlots.bottom],
     [suggestionSlots.bottom, suggestionSlots.top]
@@ -183,8 +190,8 @@ function App() {
     });
     return slots;
   }, [previousSnapshots]);
-  const simpleSuggestions = useMemo(() => verticalSuggestions.slice(0, 3), [verticalSuggestions]);
-  const advancedSuggestions = useMemo(() => verticalSuggestions.slice(0, 3), [verticalSuggestions]);
+  const simpleSuggestions = verticalSuggestions;
+  const advancedSuggestions = verticalSuggestions;
   const menuControlClassName = "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-ink";
   const menuSelectClassName = "bg-transparent px-0 py-0 pr-6 text-sm text-ink outline-none";
   const menuLabelClassName = "opacity-50";
@@ -222,6 +229,32 @@ function App() {
     };
   }, []);
 
+  // Reset chord history and suggestions after a silent pause
+  useEffect(() => {
+    if (isPaused) return;
+
+    if (activeNotes.length > 0) {
+      if (pauseResetTimerRef.current !== null) {
+        window.clearTimeout(pauseResetTimerRef.current);
+        pauseResetTimerRef.current = null;
+      }
+      return;
+    }
+
+    pauseResetTimerRef.current = window.setTimeout(() => {
+      pauseResetTimerRef.current = null;
+      setCommittedChordHistory([]);
+      committedChordHistoryRef.current = [];
+    }, PAUSE_RESET_MS);
+
+    return () => {
+      if (pauseResetTimerRef.current !== null) {
+        window.clearTimeout(pauseResetTimerRef.current);
+        pauseResetTimerRef.current = null;
+      }
+    };
+  }, [activeNotes, isPaused]);
+
   function commitGroupedNotes(groupedNotes: number[]) {
     const pendingNotes = [...groupedNotes].sort((a, b) => a - b);
     setCommittedVoicingAnchor(pendingNotes);
@@ -243,7 +276,7 @@ function App() {
         progressionMode: progressionModeRef.current
       })
         .filter((suggestion, index, all) => all.findIndex((entry) => entry.id === suggestion.id) === index)
-        .slice(0, 4);
+        .slice(0, 6);
 
     setCommittedChord(pendingChord);
     setCommittedSuggestions(nextSuggestions);
@@ -524,6 +557,21 @@ function App() {
               )}
             </label>
 
+            {engine === "neural" && (
+              <label className={menuControlClassName}>
+                <span className={menuLabelClassName}>suggestions</span>
+                <select
+                  value={neuralSuggestionCount}
+                  onChange={(event) => setNeuralSuggestionCount(Number(event.target.value))}
+                  className={menuSelectClassName}
+                >
+                  {[1, 2, 3, 4, 5, 6].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <label className={menuControlClassName}>
               <span className={menuLabelClassName}>layout</span>
               <select
@@ -577,7 +625,7 @@ function App() {
               </div>
 
               <div className="flex min-w-0 flex-col gap-2 py-4">
-                {Array.from({ length: 3 }, (_, index) => simpleSuggestions[index] ?? null).map((suggestion, index) => (
+                {Array.from({ length: displayCount }, (_, index) => simpleSuggestions[index] ?? null).map((suggestion, index) => (
                   <SuggestionCard
                     key={suggestion?.id ?? `simple-${index}`}
                     suggestion={suggestion}
